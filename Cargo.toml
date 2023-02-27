@@ -90,3 +90,8 @@ spec = "config_spec.toml"
 [package.metadata.docs.rs]
 all-features = true
 rustc-args = ["--cfg", "docsrs"]
+
+[patch.crates-io]
+bp-core = { path = "../bp-core" }
+commit_verify = { path = "../client_side_validation/commit_verify" }
+rgb_core = { package = "rgb-core", path = "../rgb-core" }
