@@ -58,6 +58,9 @@ pub enum CtlMsg {
     FinalizeTransfers(FinalizeTransfersReq),
 
     #[display(inner)]
+    FinalizeTransfersStatic(FinalizeTransfersReq),
+
+    #[display(inner)]
     #[from]
     Validity(ValidityResp),
 

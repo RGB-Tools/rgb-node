@@ -257,6 +257,22 @@ impl Client {
         }
     }
 
+    pub fn finalize_transfers_static(
+        &mut self,
+        transfers: Vec<(StateTransfer, Vec<SealEndpoint>)>,
+        psbt: Psbt,
+        progress: impl Fn(String),
+    ) -> Result<FinalizeTransfersRes, Error> {
+        self.request(RpcMsg::FinalizeTransfersStatic(TransfersReq { transfers, psbt }))?;
+        loop {
+            match self.response()?.failure_to_error()? {
+                RpcMsg::FinalizedTransfers(transfers) => return Ok(transfers),
+                RpcMsg::Progress(info) => progress(info),
+                _ => return Err(Error::UnexpectedServerResponse),
+            }
+        }
+    }
+
     pub fn consume_transfer(
         &mut self,
         transfer: StateTransfer,

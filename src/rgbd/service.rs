@@ -283,6 +283,10 @@ impl Runtime {
                 self.complete_transfers(endpoints, client_id, transfers, psbt)?;
             }
 
+            RpcMsg::FinalizeTransfersStatic(TransfersReq { transfers, psbt }) => {
+                self.complete_transfers_static(endpoints, client_id, transfers, psbt)?;
+            }
+
             wrong_msg => {
                 error!("Request is not supported by the RPC interface");
                 return Err(DaemonError::wrong_esb_msg(ServiceBus::Rpc, &wrong_msg));
@@ -573,6 +577,21 @@ impl Runtime {
         psbt: Psbt,
     ) -> Result<(), DaemonError> {
         self.ctl_queue.push_back(CtlMsg::FinalizeTransfers(FinalizeTransfersReq {
+            client_id,
+            transfers,
+            psbt,
+        }));
+        self.pick_or_start(endpoints, client_id)
+    }
+
+    fn complete_transfers_static(
+        &mut self,
+        endpoints: &mut Endpoints,
+        client_id: ClientId,
+        transfers: Vec<(StateTransfer, Vec<SealEndpoint>)>,
+        psbt: Psbt,
+    ) -> Result<(), DaemonError> {
+        self.ctl_queue.push_back(CtlMsg::FinalizeTransfersStatic(FinalizeTransfersReq {
             client_id,
             transfers,
             psbt,

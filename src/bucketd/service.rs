@@ -261,6 +261,14 @@ impl Runtime {
                 self.handle_finalize_transfers(endpoints, client_id, transfers, psbt)?;
             }
 
+            CtlMsg::FinalizeTransfersStatic(FinalizeTransfersReq {
+                client_id,
+                transfers,
+                psbt,
+            }) => {
+                self.handle_finalize_transfers_static(endpoints, client_id, transfers, psbt)?;
+            }
+
             wrong_msg => {
                 error!("Request is not supported by the CTL interface");
                 return Err(DaemonError::wrong_esb_msg(ServiceBus::Ctl, &wrong_msg));
@@ -505,6 +513,26 @@ impl Runtime {
         psbt: Psbt,
     ) -> Result<(), DaemonError> {
         match self.finalize_transfers(transfers, psbt) {
+            Err(err) => {
+                let _ = self.send_rpc(endpoints, client_id, err);
+                self.send_ctl(endpoints, ServiceId::rgbd(), CtlMsg::ProcessingFailed)?
+            }
+            Ok(transfers) => {
+                let _ = self.send_rpc(endpoints, client_id, RpcMsg::FinalizedTransfers(transfers));
+                self.send_ctl(endpoints, ServiceId::rgbd(), CtlMsg::ProcessingComplete)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn handle_finalize_transfers_static(
+        &mut self,
+        endpoints: &mut Endpoints,
+        client_id: ClientId,
+        transfers: Vec<(StateTransfer, Vec<SealEndpoint>)>,
+        psbt: Psbt,
+    ) -> Result<(), DaemonError> {
+        match self.finalize_transfers_static(transfers, psbt) {
             Err(err) => {
                 let _ = self.send_rpc(endpoints, client_id, err);
                 self.send_ctl(endpoints, ServiceId::rgbd(), CtlMsg::ProcessingFailed)?

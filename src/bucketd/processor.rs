@@ -209,13 +209,23 @@ impl Runtime {
             blinding_factor,
             outpoint,
             close_method,
+            witness_vout,
         }) = reveal
         {
-            let reveal_outpoint = Revealed {
-                method: close_method,
-                blinding: blinding_factor,
-                txid: Some(outpoint.txid),
-                vout: outpoint.vout,
+            let reveal_outpoint = if witness_vout {
+                Revealed {
+                    method: close_method,
+                    blinding: blinding_factor,
+                    txid: None,
+                    vout: outpoint.vout,
+                }
+            } else {
+                Revealed {
+                    method: close_method,
+                    blinding: blinding_factor,
+                    txid: Some(outpoint.txid),
+                    vout: outpoint.vout,
+                }
             };
 
             let concealed_seals = consignment
@@ -272,12 +282,22 @@ impl Runtime {
                         blinding_factor,
                         outpoint,
                         close_method,
+                        witness_vout,
                     }) => {
-                        let reveal_outpoint = Revealed {
-                            method: close_method,
-                            blinding: blinding_factor,
-                            txid: Some(outpoint.txid),
-                            vout: outpoint.vout,
+                        let reveal_outpoint = if witness_vout {
+                            Revealed {
+                                method: close_method,
+                                blinding: blinding_factor,
+                                txid: None,
+                                vout: outpoint.vout,
+                            }
+                        } else {
+                            Revealed {
+                                method: close_method,
+                                blinding: blinding_factor,
+                                txid: Some(outpoint.txid),
+                                vout: outpoint.vout,
+                            }
                         };
 
                         let mut owned_rights: BTreeMap<OwnedRightType, TypedAssignments> = bmap! {};
@@ -371,10 +391,8 @@ impl Runtime {
                 self.store.store_sten(db::NODE_CONTRACTS, node_id, &contract_id)?;
 
                 for seal in new_transition.filter_revealed_seals() {
-                    let index_id = ChunkId::with_fixed_fragments(
-                        seal.txid.expect("seal should contain revealed txid"),
-                        seal.vout,
-                    );
+                    let index_id =
+                        ChunkId::with_fixed_fragments(seal.txid.unwrap_or(witness_txid), seal.vout);
                     self.store.insert_into_set(db::OUTPOINTS, index_id, node_id.into_array())?;
                 }
             }
@@ -641,6 +659,51 @@ impl Runtime {
         // 4. Conceal all the state not related to the transfer.
         // TODO: Conceal all the amounts except the last transition
         // TODO: Conceal all seals outside of the paths from the endpoint to genesis
+
+        // 5. Construct and store disclosure for the blank transfers.
+        let txid = anchor.txid;
+        let disclosure = Disclosure::with(anchor, bundles, None);
+        self.store.store_sten(db::DISCLOSURES, txid, &disclosure)?;
+
+        Ok(FinalizeTransfersRes { consignments, psbt })
+    }
+
+    pub(super) fn finalize_transfers_static(
+        &mut self,
+        transfers: Vec<(StateTransfer, Vec<SealEndpoint>)>,
+        mut psbt: Psbt,
+    ) -> Result<FinalizeTransfersRes, DaemonError> {
+        // 1. Pack LNPBP-4 and anchor information.
+        let mut bundles = psbt.rgb_bundles()?;
+        debug!("Found {} bundles", bundles.len());
+        trace!("Bundles: {:?}", bundles);
+
+        let anchor = Anchor::commit_static(&mut psbt)?;
+        trace!("Anchor: {:?}", anchor);
+
+        let mut consignments = vec![];
+        for (state_transfer, seal_endpoints) in &transfers {
+            let mut consignment = state_transfer.clone();
+            let contract_id = consignment.contract_id();
+            info!("Finalizing transfer for {}", contract_id);
+
+            // 2. Extract contract-related state transition from PSBT and put it
+            //    into consignment.
+            let bundle = bundles.remove(&contract_id).ok_or(FinalizeError::ContractBundleMissed)?;
+            let bundle_id = bundle.bundle_id();
+            consignment.push_anchored_bundle(anchor.to_merkle_proof(contract_id)?, bundle)?;
+
+            // 3. Add seal endpoints.
+            let endseals = seal_endpoints.clone();
+            for endseal in endseals {
+                consignment.push_seal_endpoint(bundle_id, endseal);
+            }
+
+            consignments.push(consignment);
+        }
+
+        // 4. Conceal all the state not related to the transfer.
+        // TODO, see finalize_transfers for details
 
         // 5. Construct and store disclosure for the blank transfers.
         let txid = anchor.txid;

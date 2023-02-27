@@ -21,6 +21,9 @@ pub struct Reveal {
 
     /// method (specified when the utxo blinded was created)
     pub close_method: CloseMethod,
+
+    /// Whether a witness output is being revealed
+    pub witness_vout: bool,
 }
 
 impl std::fmt::Display for Reveal {
@@ -72,6 +75,7 @@ impl ::core::str::FromStr for Reveal {
                 Err(_) => return Err(ParseRevealError::Outpoint),
             },
             blinding_factor: parse_blind(&s[colon_blind + 1..])?,
+            witness_vout: false,
         })
     }
 }

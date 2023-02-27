@@ -77,6 +77,9 @@ pub enum RpcMsg {
     #[display(inner)]
     FinalizeTransfers(TransfersReq),
 
+    #[display(inner)]
+    FinalizeTransfersStatic(TransfersReq),
+
     #[display("memorize_seal({0})")]
     MemorizeSeal(seal::Revealed),
 
